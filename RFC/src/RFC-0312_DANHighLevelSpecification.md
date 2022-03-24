@@ -159,7 +159,7 @@ one contract.
 Other RFCs will discuss ways to overcome the apparent limitations this rule implies, including inter-contract
 interactions and asset hibernation.
 
-#### Asset issuer - validator node agreements
+#### Asset issuer <-> Validator node agreements
 
 The fundamental relationship of Tari contracts is between the asset issuer and the validator node(s) that manage
 the contract's side-chain. This relationship is somewhat adversarial by nature: Issuers want high quality service at
@@ -180,70 +180,18 @@ follow this model, as well as early on in the transition from tradFi to deFi.
 
 A set of Validator nodes that manage the same contract is called the _validator node committee_ for the contract.
 
-##### Contract instantiation
+### The Asset issuer
+[asset issuer]: #asset_issuer
 
-* Every contract MUST be governed by one, and only one, Tari [side-chain]. A contract MAY define one or more digital assets.
-  This contract can be very simple or highly complex.
-* The contract is defined in a [contract definition transaction].
-  * This transaction defines the "what" of the digital asset set that will be created. 
-  * The contract definition transaction MUST provide the full contract specification, or a hash of the full contract
-    specification and initial data. This is immutable for the lifetime of the contract.
-* The asset issuer broadcasts a [validator committee proposal] transaction.
-  * This transaction defines the "how" and "who" of the digital asset's management.
-  * It links to the contract definition UTXO.
-  * This transaction contains the "contract terms" for the management of the contract.
-  * This transaction contains the public keys of the proposed VN committee; 
-  * a expiry date before which all the VNs must sign and agree to these terms (the [acceptance period]]); 
-  * quorum conditions for acceptance of this proposal (default to 100%);
-  * this MUST be achieved by the asset issuer providing a UTXO that can only be spent by a multisig of the quorum of
-    VNS performing a peg-in. There MAY be an [initial reward] that is paid to the VN committee when the UTXO is spent.
-  * part of this agreement MAY be a [side-chain deposit] amount that needs to be committed as part of the [peg-in];
-  * quorum conditions for peg-outs (e.g. I require a 3 of 5 threshold signature); In this instance peg-outs refer to an exit
-    of the entire side-chain. We envisage that depositing and withdrawing funds into / out of the SC can be done via
-    a template and will vary depending on the template (e.g. custodial vs self-custody / refund tx).
-  * The advertised consensus model for the side chain (this can't be enforced, but can be checked); 
-  * Checkpoint parameters, including, frequency, rules around committee changes.
-* Validator nodes MUST cryptographically [acknowledge and agree] to manage the contract.
-  * Each VN publishes a [contract acceptance transaction] committing the required stake. The UTXO is also an explicit 
-    agreement to manage the contract.
-  * In a PoW side chain, we still need a VN to act as "checkpoint publisher", so this step is still required for PoW 
-    chains.
-  * The UTXO has a time lock, that prevents the VN spending the UTXO before the [acceptance period] + [peg-in period] 
-    has lapsed.
-* Once the [acceptance period] has expired, [peg-in period] begins.
-  * At this point, VNs that have accepted the contract must 
-    * allocate resources
-    * Setup whatever is needed to run the contract
-    * Set up consensus with their peer VNs (e.g. hotstuff)
-    * Intialise the contract and run the constructors
-    * Reach consensus on the initial state.
-    * Prepare the [peg-in] transaction.
-  * all before the [peg-in] period expires.
-* Side-chains MUST be initiated by virtue of a [peg-in] transaction.
-  * Once the [acceptance period] has expired, [peg-in period] begins.
-  * At this point, there MUST be a quorum of acceptance transactions from validator nodes. 
-    validator node committee MUST collaborate to produce, sign and broadcast the peg-in transaction by spending the 
-    [initial reward]. This also serves the purpose of linking the peg-in to the specific contract that is being 
-    managed by the side-chain.
-  * There is a minimum [side-chain deposit] that MUST be included in the peg-in UTXO. A single aggregated UTXO 
-    containing at least $$ m D $$ Tari, where _m_ is the number of VNs and _D_ is the deposit required.
-  * This transaction also acts as the zero-th checkpoint for the contract. As such, it requires all the checkpoint 
-    information.
-  * The state commitment is the merklish root of the state after running the code initialisation using the [initial 
-    data] provided in the [contract definition].
-* Validator nodes MUST periodically sign and broadcast a [checkpoint] transaction.
-  * The checkpoint UTXO MUST have the `CHECKPOINT` output feature.
-  * It contains the [contract_id]
-  * This feature contains a commitment to the current contract state. This is typically some sort of Merklish root.
-  * A checkpoint number, strictly increasing by 1 form the previous checkpoint
-  * The checkpoint MUST spend the previous checkpoint. This is guaranteed by virtue of a covenant.
-  * The checkpoint UTXO contains a covenant that provides the spending conditions described above.
-  * Checkpoints allow the exit and entrance of new validator nodes into the committee.
-* A checkpoint MAY introduce a new Validator Node public key into the VN committee
-  * The conditions for adding a new key to the VN committee set are specified in the [contract definition]
-  * Note: At the minimum, there's a proposal step, a validation step, an acceptance step, and an activation step.
+The asset issuer, otherwise known as the contract owner, is the entity that publishes a [contract creation transaction].
 
-##### Contract management
+* The asset issuer MAY transfer ownership of a contract to a new entity.
+* The asset issuer MAY migrate a contract to a new version.
+
+OPEN QUESTION: What rights are unquestionably given to the owner? Maybe the covenant should be somewhat flexible.
+Contracts that do not allow the owner to deregister it will be more trustworthy than those that do.
+
+#### The role of validator nodes
 
 * Validator nodes SHOULD diligently and accurately [process all instructions] related to the contract.
 * The committee SHOULD reach consensus on every instruction related to the contract. This specification does NOT dictate how this
@@ -256,19 +204,25 @@ A set of Validator nodes that manage the same contract is called the _validator 
 there could be one server and a bunch of proxies that merely relay messages. Only proof of work (because it is permissionless)
 and proof of stake (maybe?) work around this problem. We need some sort of proof-of-uniqueness mechanism here... :thinking:
 
-* The validator node committee MUST post periodic [checkpoints] onto the base layer.
-  * The checkpoint MUST include a [summary of the contract state]. This summary SHOULD be in the form of a Merklish Root.
-  * The checkpoint MUST include [refund information] for Tari holders in the side-chain.
-  * The checkpoint MUST spend the old contract funding UTXO into a new funding UTXO, taking any withdrawals and new deposits
-    into account.
-* If a valid checkpoint is not posted within the maximum allowed timeframe, the contract is [abandoned]. This COULD lead
-  to penalties and stake slashing if enabled within the contract specification.
-* A checkpoint MAY define [validator node committee updates].
-
 The Tari base layer does not get involved in governance issues. However, many asset issuers may want to include mechanisms
 that, for example, require a Tari stake to act as a validator node. Validator nodes may also desire a compensation
 mechanism so that they get paid for managing the contract. These mechanisms form part of the contract itself, and are
 opaque to the machinery of the base layer, side-chain and associated peg transactions.
+
+Validator nodes should expect to have to stake Tari for each contract they validate. Asset issuers will determine the
+nature and amount of stake required. The contract stake is variable on a contract-to-contract basis so that an
+efficient market
+between asset issuers and validator nodes can develop. This market is not defined on the Tari blockchain at all and
+would be implemented as a DAO on the DAN itself.
+
+Similarly, it has been suggested in the past that Validator Nodes should post hardware benchmarks when registering. The problem
+with this requirement is that it is fairly trivial to game. We cannot enforce that the machine that posted the benchmark
+is the same as the one that is running validations.
+
+A better approach is to leave this to the market. A reputation contract can be built, on Tari, of course, that
+periodically and randomly asks Validator Nodes to perform cryptographically signed benchmarks in exchange for performance
+certificates. Nodes can voluntarily sign up for such a service and acts as a form of credential. Nodes that do not sign
+up may have trouble finding contracts to validate and might have to lower their price to get work.
 
 Tari [contract]s are template-based, and so many contracts may wish to include templates that add one or more of the
 following functionality to the side-chain contract:
@@ -287,24 +241,64 @@ This list is far from complete, but should convey the idea that:
 * The base layer and peg transactions know the absolute minimum about the assets on the chain. However, they provide
   all the information necessary for the contract templates and side-chains to function efficiently.
 
-### Finer-grained specifications
 
-#### Tari contracts
-[contract]: #tari-contracts
-[smart contract]: #tari-contracts
+### The contract lifecycle
+[contract lifecycle]: #the-contract-lifecycle "The contract lifecycle"
 
-1. The asset issuer publishes a [contract creation transaction] that specifies exactly what the contract does, the types
-   of assets it will manage, as well as some metadata.
-2. The issuer must then find a set of validator nodes that will manage the contract. This is typically done out-of-band,
-   via a DEX, DAO or other marketplace. The VNs could also be owned by the issuer itself.
-3. A new side-chain for the contract is created via the publishing of a [peg-in transaction].
+Every contract MUST be governed by one, and only one, Tari [side-chain]. A contract MAY define one or more digital assets.
+This contract can be very simple or highly complex.
 
-#### Contract definition transaction
-[contract definition transaction]: #contract-definition-transaction
+The lifecycle of a contract proceeds via these steps:
+
+1. The asset issuer publishes a [contract definition transaction].
+2. The asset issuer publishes a [validator committee proposal] transaction.
+3. Once this transaction is published, we enter the [acceptance period].
+4. Each validator node that will be managing the contract publishes a [contract acceptance transaction]. The group of
+   validator nodes is called the Validator Node Committee (VNC).
+5. Once the [acceptance period] has expired, [peg-in period] begins.
+6. The VNC jointly publishes a [peg-in transaction].
+7. At this point, the contract is considered live, and users can interact with the contract on the side-chain.
+8. The VNC periodically publishes a [checkpoint transaction]. 
+9. Failure to do so can lead to the contract being [abandoned].
+10. The VNC may opt shut the contract down by publishing a [peg-out transaction].
+
+The following sections will discuss each of these steps in more detail.
+
+#### Contract instantiation
+[contract instantiation]: #contract-instantiation "Contract Instantiation"
+
+Steps 1 - 6 in the [contract lifecycle] are part of the [contract instantiation] process. It is a multi-step process 
+and is ideally represented as a finite-state machine that reacts to transactions published on chain that contain outputs 
+containing specific output features. The combination of output features and FSM allows nodes to accurately track the 
+progress of potentially thousands of contracts in a safe and decentralised manner.
+
+
+#### The contract definition transaction
+[contract definition transaction]: #the-contract-definition-transaction "The contract definition transaction"
+
+It bears repeating that every contract is governed by one, and only one, Tari [side-chain]. A contract MAY 
+define one or more digital assets. These assets' behaviour is captured in [templates] and are highly composable.
+This allows the contract to be very simple or highly complex, and be handled with the same contract handling machinery.
+
+<note :tip>
+The contract definition transaction defines the "what" of the digital asset set that will be created.
+</note>
+
+The contract definition transaction MUST provide 
+* the full contract specification, OR a hash of the full contract specification
+* and initial data. This is immutable for the lifetime of the contract.
+
+This data tells validator nodes _exactly_ what code will be running, and the data needed to initialise that code.
+
+Asset templates will have a strictly defined interface that includes a constructor, or initialisation method. The 
+parameters that these constructors define is what determined the initial data.
+
+These two pieces of data are _necessary_ AND _sufficient_ to enable _any_ validator node to start running the contract
+and execute instructions on it.
 
 * Every contract MUST be registered on the base layer.
 * Contracts MUST be registered by publishing a `contract definition` transaction.
-* The following information must be captured as part of the `contract definition` transaction in a contract 
+* The following information must be captured as part of the `contract definition` transaction in a contract
   definition UTXO:
   * Exactly ONE output MUST have a `ContractDefintion` output feature.
   * A `ContractDefintion` UTXO has the following information:
@@ -318,9 +312,123 @@ This list is far from complete, but should convey the idea that:
 * The [!]:
   * Version number (contract code definition can be upgraded)
   * The template hash being implemented
-  
+
 * The [contract code definition] also includes the initial state (hash?) for the contract.
   * e.g. all the sub-templates and their state.
+
+The contract definition MUST UTXO hold at least the `MINIMUM_OWNER_COLLATERAL` in Tari.
+
+The owner collateral is a small staked amount of at least `MINIMUM_OWNER_COLLATERAL`. The amount is hard-coded into
+consensus rules and is a nominal amount to prevent spam, and encourages asset owners to tidy up after themselves when
+a contract winds down.
+
+Initially, `MINIMUM_OWNER_COLLATERAL` is set at 200 Tari, but MAY be changed across network upgrades.
+
+Assuming the collateral is represented by the UTXO commitment $C = kG + vH$, the minimum requirement is verified by
+having the range-proof commit to $(k, v - v_\mathrm{min})$ rather than the usual  $(k, v)$. Note that this change requires us to modify the
+`TransactionOutput` definition to include a `minimum_value_commitment` field, defaulting to zero, to capture this extra information.
+
+* The owner collateral UTXO MUST have the `TRANSACTION_DEFINITION` output feature flag set.
+* The owner collateral MUST include a covenant that only permits it to be spent to a new `TRANSACTION_DEFINITION` UTXO (when
+  transferring ownership of a contract), or as an unencumbered UTXO in a `CONTRACT_DEREGISTRATION` transaction. 
+  TODO: This transaction is desirable because it tidies up the UTXO set. But this tx cannot be published before the VN
+  shuts the contract down via a [peg-out transaction].
+
+#### The validator committee proposal
+[validator committee proposal]: #the-validator-committee-proposal "The validator committee proposal"
+
+  * The asset issuer broadcasts a [validator committee proposal] transaction.
+    * This transaction defines the "how" and "who" of the digital asset's management.
+    * It links to the contract definition UTXO.
+    * This transaction contains the "contract terms" for the management of the contract.
+    * This transaction contains the public keys of the proposed VN committee; 
+    * a expiry date before which all the VNs must sign and agree to these terms (the [acceptance period]]); 
+    * quorum conditions for acceptance of this proposal (default to 100%);
+    * this MUST be achieved by the asset issuer providing a UTXO that can only be spent by a multisig of the quorum of
+      VNS performing a peg-in. There MAY be an [initial reward] that is paid to the VN committee when the UTXO is spent.
+    * part of this agreement MAY be a [side-chain deposit] amount that needs to be committed as part of the [peg-in];
+    * quorum conditions for peg-outs (e.g. I require a 3 of 5 threshold signature); In this instance peg-outs refer to an exit
+      of the entire side-chain. We envisage that depositing and withdrawing funds into / out of the SC can be done via
+      a template and will vary depending on the template (e.g. custodial vs self-custody / refund tx).
+    * The advertised consensus model for the side chain (this can't be enforced, but can be checked); 
+    * Checkpoint parameters, including, frequency, rules around committee changes.
+
+If both the [acceptance period] and [peg-in period] elapses and quorum, the asset owner MAY spend the validator 
+committee proposal UTXO back to himself to recover his funds.
+
+#### The contract acceptance transaction
+[contract acceptance transaction]: #the-contract-acceptance-transaction "The contract acceptance transaction"
+
+The asset issuer must then find a set of validator nodes that will manage the contract. This is typically done 
+out-of-band, via a DEX, DAO or other marketplace. The VNs could also be owned by the issuer itself.
+
+  * Validator nodes MUST cryptographically [acknowledge and agree] to manage the contract.
+  * Each VN publishes a [contract acceptance transaction] committing the required stake. The UTXO is also an explicit 
+      agreement to manage the contract.
+  * In a PoW side chain, we still need a VN to act as "checkpoint publisher", so this step is still required for PoW 
+      chains.
+  * The UTXO has a time lock, that prevents the VN spending the UTXO before the [acceptance period] + [peg-in period] 
+      has lapsed.
+
+#### The peg-in period
+[peg-in period]: #the-peg-in-period "The peg-in period"
+
+Once the [acceptance period] has expired, [peg-in period] begins.
+
+At this point, VNs that have accepted the contract must
+    * allocate resources
+    * Setup whatever is needed to run the contract
+    * Set up consensus with their peer VNs (e.g. hotstuff)
+    * Intialise the contract and run the constructors
+    * Reach consensus on the initial state.
+    * Prepare the [peg-in] transaction.
+
+all before the [peg-in] period expires.
+  
+#### The peg-in transaction
+[peg-in transaction]: #the-peg-in-transaction "The peg-in transaction"
+  
+Side-chains MUST be initiated by virtue of a [peg-in] transaction.
+
+* Once the [acceptance period] has expired, [peg-in period] begins.
+* At this point, there MUST be a quorum of acceptance transactions from validator nodes. 
+  validator node committee MUST collaborate to produce, sign and broadcast the peg-in transaction by spending the 
+  [initial reward]. This also serves the purpose of linking the peg-in to the specific contract that is being 
+  managed by the side-chain.
+* There is a minimum [side-chain deposit] that MUST be included in the peg-in UTXO. A single aggregated UTXO 
+  containing at least $$ m D $$ Tari, where _m_ is the number of VNs and _D_ is the deposit required.
+* This transaction also acts as the zero-th checkpoint for the contract. As such, it requires all the checkpoint 
+  information.
+* The state commitment is the merklish root of the state after running the code initialisation using the [initial 
+  data] provided in the [contract definition].
+
+#### Checkpoint transactions
+[checkpoint]: #checkpoint-transactions "Checkpoint transactions"
+
+* Validator nodes MUST periodically sign and broadcast a [checkpoint] transaction.
+  * The checkpoint UTXO MUST have the `CHECKPOINT` output feature.
+  * It contains the [contract_id]
+  * This feature contains a commitment to the current contract state. This is typically some sort of Merklish root.
+  * A checkpoint number, strictly increasing by 1 form the previous checkpoint
+  * The checkpoint MUST spend the previous checkpoint. This is guaranteed by virtue of a covenant.
+  * The checkpoint UTXO contains a covenant that provides the spending conditions described above.
+  * Checkpoints allow the exit and entrance of new validator nodes into the committee.
+* A checkpoint MAY introduce a new Validator Node public key into the VN committee
+  * The conditions for adding a new key to the VN committee set are specified in the [contract definition]
+  * Note: At the minimum, there's a proposal step, a validation step, an acceptance step, and an activation step.
+
+* The validator node committee MUST post periodic [checkpoints] onto the base layer.
+  * The checkpoint MUST include a [summary of the contract state]. This summary SHOULD be in the form of a Merklish Root.
+  * The checkpoint MUST include [refund information] for Tari holders in the side-chain.
+  * The checkpoint MUST spend the old contract funding UTXO into a new funding UTXO, taking any withdrawals and new deposits
+    into account.
+* If a valid checkpoint is not posted within the maximum allowed timeframe, the contract is [abandoned]. This COULD lead
+  to penalties and stake slashing if enabled within the contract specification.
+* A checkpoint MAY define [validator node committee updates].
+
+### Other considerations and specifications
+
+The following requirements aren't part of the contract lifecycle specifically, but are needed to remove ambiguity.
 
 #### Template code registration and versioning
 
@@ -329,84 +437,21 @@ The code template implementations MUST be registered on the base layer.
 The reason for this is that it allows Validator Nodes to know unequivocally that they are all running the same code
 and can expect the same output for the same input.
 
-Side note: We should also provide some way for VNs to know which version of the execution engine they should be running
-for a given contract.
-
 Template registration also allows us to implement a secure and trust-minimised upgrade mechanism for templates. 
 
 Potentially, we could even introduce a mechanism wherein template developers get paid for people using their template.
 
 Template registration UTXO would contain:
-* A link to the code (git commit or IPFS)
-* The type of code (source or binary blob)
-* A hash of the source code / blob
-* Version info.
-* Execution engine requirements (similar to solc pragma)
+  * A link to the code (git commit or IPFS)
+  * The type of code (source or binary blob)
+  * A hash of the source code / blob
+  * Version info.
+  * [Execution engine] requirements (similar to solc pragma)
 
 There's a clear upgrade path, since
 there's a code-chain from one version of a contract template to the next.
 
-
-
-
-#### Asset issuer
-[asset issuer]: #asset_issuer
-
-The asset issuer, otherwise known as the contract owner, is the entity that publishes a [contract creation transaction].
-
-* The asset issuer MAY transfer ownership of a contract to a new entity.
-* The asset issuer MAY migrate a contract to a new version.
-
-OPEN QUESTION: What rights are unquestionably given to the owner? Maybe the covenant should be somewhat flexible.
-Contracts that do not allow the owner to deregister it will be more trustworthy than those that do.
-
-The owner collateral is a small staked amount of at least `MINIMUM_OWNER_COLLATERAL`. The amount is hard-coded into
-consensus rules and is a nominal amount to prevent spam, and encourages asset owners to tidy up after themselves when
-a contract winds down.
-
-Initially, `MINIMUM_OWNER_COLLATERAL` is set at 200 Tari, but MAY be changed across network upgrades.
-
-The owner collateral MUST be locked up in the [contract creation transaction].
-
-Assuming the collateral is represented by the UTXO commitment $C = kG + vH$, the minimum requirement is verified by
-having the range-proof commit to $(k, v - v_\mathrm{min})$ rather than the usual  $(k, v)$. Note that this change requires us to modify the
-`TransactionOutput` definition to include a `minimum_value_commitment` field, defaulting to zero, to capture this extra information.
-
-* The owner collateral UTXO MUST have the `OWNER_COLLATERAL` output feature flag set.
-* The owner collateral MUST include a covenant that only permits it to be spent to a new `OWNER_COLLATERAL` UTXO (when
-  transferring ownership of a contract), or as an unencumbered UTXO in a `CONTRACT_DEREGISTRATION` transaction.
-
-#### Validator node
-[Validator node]: #validator-node
-
-Validator nodes should expect to have to stake Tari for each contract they validate. Asset issuers will determine the
-nature and amount of stake required. The contract stake should be variable on a contract-to-contract basis so that an efficient market
-between asset issuers and validator nodes can develop. This market is not defined on the Tari blockchain at all and
-would be implemented as a DAO on the DAN itself.
-
-Similarly, it has been suggested in the past that Validator Nodes should post hardware benchmarks when registering. The problem
-with this requirement is that it is fairly trivial to game. We cannot enforce that the machine that posted the benchmark
-is the same as the one that is running validations.
-
-A better approach is to leave this to the market. A reputation contract can be built, on Tari, of course, that
-periodically and randomly asks Validator Nodes to perform cryptographically signed benchmarks in exchange for performance
-certificates. Nodes can voluntarily sign up for such a service and acts as a form of credential. Nodes that do not sign
-up may have trouble finding contracts to validate and might have to lower their price to get work.
-
-#### Side-chain specifications
-[side-chain]: #side-chain-specifications
-
-* Every side chain MUST be registered on the base layer.
-* Side-chains MUST be created by publishing a [peg-in] transaction.
-* The following information must be captured as part of the peg-in transaction
-  * the owner authority (PublicKey) - could be a multisig key
-  * ?a chain id (scalar) - deterministic hash of initial contract metadata. Immutable for the life of the SC
-* contract name (UTF-8 string) 32 bytes
-* checkpoint number - 0 when creating SC
-* checkpoint hash
-* ?contract definition
-
-
+---> Review marker
 #### Contract user accounts
 [contract user accounts]: #contract-user-accounts
 
@@ -420,8 +465,8 @@ The reasons for this are:
   the number of transactions carried out on the side-chain. When a side-chain wants to shut down, they must record a new
   output on the base layer for every account or output (as the case may be) that they track in the peg-out transaction(s).
   It should be self-evident that account-based systems are far more scalable in the vast majority of use-cases.
-* Following on from this, Accounts scale better for micro-payment applications, where hundreds or thousands of tiny payments
-  flow between the same two parties.
+* Following on from this, Accounts scale better for micro-payment applications, where hundreds or thousands of tiny 
+  payments flow between the same two parties.
 * Many DAN applications will want to track state (such as NFTs) as well as currency balances. Account-based ledgers make
   this type of application far simpler.
 
@@ -465,110 +510,6 @@ was expressly designed to provide confidentiality in a smart-contract context. I
 schemes. Zether can also be [extended](https://github.com/ConsenSys/anonymous-zether) to provide privacy by including
 a ring-signature scheme for transfers.
 
-### External references
-
-### TODO
-
-### Contract creation flow
-
-The [Asset Owner] creates and owns a contract. Each contract runs in its own side-chain, and is managed by one or more
-[Validator nodes].
-
-There are several steps that are required to launch a new contract. They are discussed in detail below and in the various
-sub-RFCs, but the basic flow is
-
-//TODO Insert creation flow
-
-To complete the contract creation flow, two transactions will be published on the main chain.
-The first is the [Peg-in transaction] which formally coincides with the genesis of the side-chain.
-
-The peg-in transaction contains a list of [authorised signers] that have the authority to broadcast the peg-out transactions.
-Once a critical threshold of signers have acknowledged this responsibility _on-chain_, the side-chain can be considered
-live and the second, [Asset Registration transaction], can be broadcast.
-
-#### Metadata specification
-
-[Asset metadata]: #metadata-specification
-The asset metadata contains all the information that base nodes need to build up and maintain the [Digital Asset Register].
-
-This allows clients to search for, interrogate and interact with Digital Assets on Tari, even though they don't technically
-exist on the base-chain. Think of the Digital Asset register as a DNS for smart contracts.
-
-The asset metadata includes:
-
-* The full [contract specification]. Validator nodes will use this in conjunction with the initial state to intialise and
-  then run the contract. The contract specification is immutable for the lifetime of the contract.
-* The owner's public key. This will typically be linked to a Yat so that that clients can easily ascertain who issued
-  the contract and whether the contract is legitimate.
-* The [contract name]. The name is purely informational, is OPTIONAL, does not have to be unique and is a UTF-8 string limited to 64 bytes.
-* [Delegate authority]. The delegate authority is a [TariScript] script that delegates authority for [`UpdateSigner`]
-  transactions.
-
-#### Peg-in transaction
-
-[Peg-in transaction]: #peg-in-transaction
-The first of the two transactions required to bring a digital asset into existence is the peg-in transaction.
-
-The purpose of the peg-in is to:
-
-* Identify the authorised signers. This is a list of public keys and a critical threshold that determines who can
-  authorise transaction spending fund out of the side-chain back onto the base-chain ([peg-out transaction]s).
-* Offer proof that the [Asset owner] has posted some minimum amount of funding capital.
-
-The peg-in transaction requires
-
-* a [funding commitment]. This represents a source of funds that will be paid over to validator nodes for managing the contract.
-* a list of [peg-out signers]. These are a set of public keys that are authorised to sign the peg-out transaction.
-
-This transaction MUST be signed by the [Asset owner] private key.
-
-* Value is seed amount
-* range proof on (k, v - v_seed)
-* Output type is `PEG-IN`
-* Funding address - the public key that accepts 'deposits' for this contract. MUST be one-sided payments
-* The contract ID (Do we know this yet [??])
-* [Authorised signer] - A TariScript providing the requirements for peg outs and `UpdateSigner`. [?? Probably should be 2 different scripts]
-
-To be more specific, the transaction is composed as follows:
-
-| Transaction component | Details              |                            | Comments / Restrictions         |
-| :-------------------- | :------------------- | :------------------------- | :------------------------------ |
-| Inputs                |                      |                            | Any valid inputs                |
-| Output                | description          | Funding commitment         |                                 |
-|                       | Commitment           | hold funds for funding VNs |                                 |
-|                       | Range proof          |                            | Commit to$(k, v_\mathrm{seed})$ |
-|                       | Output Feature flags | `CONTRACT_SEED`            |                                 |
-|                       | Output feature       | $v_\mathrm{seed}$          | Minimum seed amount             |
-|                       | script               | [???]                      |                                 |
-|                       | covenant             |                            |                                 |
-| Kernel                |                      |                            |                                 |
-
-#### Asset registration transaction
-
-The registration transaction requires the following data:
-
-* [Asset metadata],
-* [Owner collateral],
-* [Initial contract state], or more correctly, the hash of the initial contract state,
-* [The checkpoint number], which is always zero for new assets.
-
-The transaction requires all [signers] to have commited their stake.
-
-The UTXO output type is `ASSET_REGISTRATION`. This is an implicit or explicit (implemenation dependent) covenant that
-the UTXO can only be spent to a `CHECKPOINT` UTXO. `ASSET_REGISTRATION` is implicity also a `CHECKPOINT` and always has
-checkpoint number 0.
-
-* The value is the collateral ?
-* Rangeproof is on (k, v - v_min) rather than (k, v)
-* Output features
-  - Full asset metadata
-  - a checkpoint covenant
-  - Checkpoint # (0)
-  - Initial state hash [??]
-  - v_min
-  - contract id - Hash(metadata || Commitment || Initial state hash)
-  - refund info [??]
-
 #### Side-chain funding transaction
 
 Goals: To allow anyone to 'deposit' Tari into a side-chain
@@ -584,7 +525,7 @@ On confirmation:
 
 * Validator nodes SHOULD credit a new account for the user for the amount deposited.
 
-#### Peg-out transactions
+#### Withdrawal transactions
 
 Goal: Allows users to securely withdraw funds and tokens from the side-chain.
 In general, sum(funding txs for the contract) + seed fund = sum(disbursements) + remaining contract fund.
@@ -598,7 +539,7 @@ In general, sum(funding txs for the contract) + seed fund = sum(disbursements) +
 - When do peg-outs happen [?]
 - What type of address do clients provide? OSP?
 
-#### Checkpoint transaction
+#### Refund transactions
 
 If a contract is abandoned by validator nodes, then there is a dilemma: We can only refund people in accordance with the
 last known state of the ledger. Therefore, we MUST record refund information into every checkpoint, so that we can at least
@@ -660,35 +601,8 @@ Only a valid of [Authorised signer] can issue an `UpdateSigner` transaction.
 Since [aUthorised signer] is TariScript, this is a very flexible arrangement. It could be the asset owner only,
 a threshold of given pubkeys, some puzzle to solve. But with great power comes great responsibility!
 
-#### Contract-creation time-out
-
-Signers have `STAKE_ALLOWANCE_TIMEOUT` blocks to sign and stake their collateral. Initially this period is set to
-30\*24\*7 = 5040 blocks (1 week).
-
-If this period elapsed and not all signer signatures have been collected, the asset owner MAY spend the peg-in output
-back to himself to recover his funds.
 
 #### Validator Node collateral
-
-[Validator Node collateral]: #validator-node-collateral
-Validator Nodes MUST stake collateral as part of their registration. The amount staked can be any amount, as long as it
-is greater than `VALIDATOR_NODE_COLLATERAL`. This value is specified in the consensus code and is initially set
-at least 2,500 Tari. This value can be changed as part of a network upgrade.
-
-The collateral stake is locked up for the entire period that the Validator Node is registered.
-The stake MUST be recovered when the validator node de-registers.
-
-This collateral cannot be slashed. There are individual contract stakes that can be slashed in response to byzantine
-validator behaviour.
-
-The primary purpose of the stake is to act as a Sybil attack deterrent.
-
-The stake is locked up for a minimum period of `MINIMUM_VALIDATION_PERIOD`. This value is initially set at three months.
-
-The requirements MUST be present in the [Validator Node registration] transaction and are enforced by consensus.
-
-
-#### DAN contract template specification
 
 [RFC-0001]: RFC-0001_overview.md
 [the role of the base layer]: RFC-0001_overview.md#the-role-of-the-base-layer
