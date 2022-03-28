@@ -255,12 +255,12 @@ The lifecycle of a contract proceeds via these steps:
 3. Once this transaction is published, we enter the [acceptance period].
 4. Each validator node that will be managing the contract publishes a [contract acceptance transaction]. The group of
    validator nodes is called the Validator Node Committee (VNC).
-5. Once the [acceptance period] has expired, [peg-in period] begins.
+5. Once the [acceptance period] has expired, the [peg-in period] begins.
 6. The VNC jointly publishes a [peg-in transaction].
 7. At this point, the contract is considered live, and users can interact with the contract on the side-chain.
 8. The VNC periodically publishes a [checkpoint transaction]. 
 9. Failure to do so can lead to the contract being [abandoned].
-10. The VNC may opt shut the contract down by publishing a [peg-out transaction].
+10. The VNC may opt to shut the contract down by publishing a [peg-out transaction].
 
 The following sections will discuss each of these steps in more detail.
 
@@ -342,7 +342,7 @@ having the range-proof commit to $(k, v - v_\mathrm{min})$ rather than the usual
     * It links to the contract definition UTXO.
     * This transaction contains the "contract terms" for the management of the contract.
     * This transaction contains the public keys of the proposed VN committee; 
-    * a expiry date before which all the VNs must sign and agree to these terms (the [acceptance period]]); 
+    * a expiry date before which all the VNs must sign and agree to these terms (the [acceptance period]); 
     * quorum conditions for acceptance of this proposal (default to 100%);
     * this MUST be achieved by the asset issuer providing a UTXO that can only be spent by a multisig of the quorum of
       VNS performing a peg-in. There MAY be an [initial reward] that is paid to the VN committee when the UTXO is spent.
@@ -351,7 +351,8 @@ having the range-proof commit to $(k, v - v_\mathrm{min})$ rather than the usual
       of the entire side-chain. We envisage that depositing and withdrawing funds into / out of the SC can be done via
       a template and will vary depending on the template (e.g. custodial vs self-custody / refund tx).
     * The advertised consensus model for the side chain (this can't be enforced, but can be checked); 
-    * Checkpoint parameters, including, frequency, rules around committee changes.
+      * including checkpoint quorum requirements
+      * Checkpoint parameters, including, frequency, rules around committee changes.
 
 If both the [acceptance period] and [peg-in period] elapses and quorum, the asset owner MAY spend the validator 
 committee proposal UTXO back to himself to recover his funds.
@@ -405,26 +406,42 @@ Side-chains MUST be initiated by virtue of a [peg-in] transaction.
 #### Checkpoint transactions
 [checkpoint]: #checkpoint-transactions "Checkpoint transactions"
 
-* Validator nodes MUST periodically sign and broadcast a [checkpoint] transaction.
+The roles of the checkpoint transaction:
+* Present proof of liveness
+* Allows VNCs to make changes to the committee
+* Summarise contract state
+* Optionally summarise contract logs / events
+
+Note: In the discussion of Tari account contract templates below, we need a mechanism for proving that side-chain state
+corresponds to what someone is claiming wrt a valid L1 transaction. But, since our policy is one that the base layer
+never knows anything about what goes on in SCs (or that SCs even exist), this poses a challenge. One elegant solution
+to this would be to add a `MERKLE_PROOF` opcode to TariScript that could validate an L1 transaction based on a 
+checkpoint merkle root combined with a merkle proof that a VNC has given to a user.
+
+
+* Validator node committees MUST periodically sign and broadcast a [checkpoint] transaction.
+  * The transaction signature MUST satisfy the requirements laid out for checkpoint transactions defined in the 
+    [validator committee proposal].  
   * The checkpoint UTXO MUST have the `CHECKPOINT` output feature.
-  * It contains the [contract_id]
+  * It MUST reference the [contract_id]
   * This feature contains a commitment to the current contract state. This is typically some sort of Merklish root.
-  * A checkpoint number, strictly increasing by 1 form the previous checkpoint
-  * The checkpoint MUST spend the previous checkpoint. This is guaranteed by virtue of a covenant.
+  * A checkpoint number, strictly increasing by 1 from the previous checkpoint
+  * The checkpoint MUST spend the previous checkpoint. This is guaranteed by virtue of a covenant. The contract id 
+    must equal the contract id of the checkpoint being spent.
   * The checkpoint UTXO contains a covenant that provides the spending conditions described above.
   * Checkpoints allow the exit and entrance of new validator nodes into the committee.
-* A checkpoint MAY introduce a new Validator Node public key into the VN committee
-  * The conditions for adding a new key to the VN committee set are specified in the [contract definition]
+  * A checkpoint MAY introduce a new Validator Node public key into the VN committee
+  * The conditions for adding a new key to the VN committee set are specified in the [validator committee proposal].
   * Note: At the minimum, there's a proposal step, a validation step, an acceptance step, and an activation step.
-
 * The validator node committee MUST post periodic [checkpoints] onto the base layer.
   * The checkpoint MUST include a [summary of the contract state]. This summary SHOULD be in the form of a Merklish Root.
-  * The checkpoint MUST include [refund information] for Tari holders in the side-chain.
-  * The checkpoint MUST spend the old contract funding UTXO into a new funding UTXO, taking any withdrawals and new deposits
-    into account.
 * If a valid checkpoint is not posted within the maximum allowed timeframe, the contract is [abandoned]. This COULD lead
   to penalties and stake slashing if enabled within the contract specification.
-* A checkpoint MAY define [validator node committee updates].
+
+TODO:
+* Specifics on VNC change process
+* Specifics on contract abandonment
+
 
 ### Other considerations and specifications
 
@@ -451,7 +468,6 @@ Template registration UTXO would contain:
 There's a clear upgrade path, since
 there's a code-chain from one version of a contract template to the next.
 
----> Review marker
 #### Contract user accounts
 [contract user accounts]: #contract-user-accounts
 
@@ -460,7 +476,7 @@ to track balances and state.
 
 The reasons for this are:
 
-* An account-based approach leads to fewer outputs on peg-in transactions. There is roughly a 1:1 ratio of users
+* An account-based approach leads to fewer outputs on peg-out transactions. There is roughly a 1:1 ratio of users
   to balances in an account-based system. On the other hand there are O(n) UTXOs in an output-based system where `n` are
   the number of transactions carried out on the side-chain. When a side-chain wants to shut down, they must record a new
   output on the base layer for every account or output (as the case may be) that they track in the peg-out transaction(s).
@@ -469,11 +485,6 @@ The reasons for this are:
   payments flow between the same two parties.
 * Many DAN applications will want to track state (such as NFTs) as well as currency balances. Account-based ledgers make
   this type of application far simpler.
-
-Tari side-chain accounts MUST be representable as, or convertible to, a valid base layer UTXO.
-
-When a side-chain pegs out, either partially (when users withdraw funds) or completely (when the side-chain shuts down),
-all balances MUST be returned to the base layer in a manner that satisfies the Tari base layer consensus rules.
 
 ##### Pedersen commitments and account-based ledgers
 
@@ -510,34 +521,9 @@ was expressly designed to provide confidentiality in a smart-contract context. I
 schemes. Zether can also be [extended](https://github.com/ConsenSys/anonymous-zether) to provide privacy by including
 a ring-signature scheme for transfers.
 
-#### Side-chain funding transaction
+### Funding, withdrawals and deposits
 
-Goals: To allow anyone to 'deposit' Tari into a side-chain
-
-* An output MUST have an output type of `FUNDING`
-  * The contract ID MUST be provided
-  * The contract ID MUST match a currently active contract
-  * The output MAY indicate the unblinded amount (for side chains that are not confidential) and a proof that the
-    commitment matches the amount (by signing a message with the spend key of the commitment)
-* The transaction MUST be a one-sided payment into the public key of the asset funding address
-
-On confirmation:
-
-* Validator nodes SHOULD credit a new account for the user for the amount deposited.
-
-#### Withdrawal transactions
-
-Goal: Allows users to securely withdraw funds and tokens from the side-chain.
-In general, sum(funding txs for the contract) + seed fund = sum(disbursements) + remaining contract fund.
-
-1. All inputs MUST be owned by the contract's [funding address].
-2. The transaction type MUST be `PegOut`, to satisfy the covenant.
-3. The spending signature must be a threshold signature of the authorised signers for the contract
-4. Not all funds need to be spent. Change MUST be a one-sided payment into the Funding address
-5. Client outputs have no spending restrictions.
-
-- When do peg-outs happen [?]
-- What type of address do clients provide? OSP?
+TODO - discussion on bridges
 
 #### Refund transactions
 
@@ -593,13 +579,6 @@ conditions:
 
 * The signer is no longer part of the contract's authorised signatory list
 * The contract has been `ABANDONED`, in which case, the output is burned.
-
-#### Updating authorised signers
-
-There MUST always be at least `threshold` signers.
-Only a valid of [Authorised signer] can issue an `UpdateSigner` transaction.
-Since [aUthorised signer] is TariScript, this is a very flexible arrangement. It could be the asset owner only,
-a threshold of given pubkeys, some puzzle to solve. But with great power comes great responsibility!
 
 
 #### Validator Node collateral
