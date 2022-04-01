@@ -523,7 +523,90 @@ a ring-signature scheme for transfers.
 
 ### Funding, withdrawals and deposits
 
-TODO - discussion on bridges
+Deposits and withdrawals go via a smart contract template.
+
+#### Very high level flow
+
+1. Send Tari via OSP to VNC address. (Could have a `DEPOSIT` output feature if required)
+2. VNC sees this, and then issues / prints / mints equivalent value on side-chain according to the SC protocol.
+3. Equivalent coins change hands many times. VNC keeps track
+4. User requests a withdrawal. 
+5. VNC "burn" equivalent coins on SC.
+6. Broadcasts standard OSP Tari tx to user.
+
+7. Optionally, provide proofs of reserve / locked funds === printed funds.
+This trusts the VNC completely. Akin to deposited funds on Coinbase.
+
+Variants
+* Users deposit and get a refund transaction to hold onto.
+* The refund tx gets updated every time the balance changes. ala Lightning.
+* Proof of burn tied to proof of spend.
+* Atomic swaps to force issue of token on side-chain in (1.) above.
+
+We could implement any/all of these variants in different templates.
+
+TODO - fees
+2 Template models:
+ - Model A - Centrally funded
+ - Fees are drawn from a single account (typically funded by asset issuer)
+ - Eligible instructions are defined in the template constructor.
+
+ - Model B - User funded
+ - Requires an account template
+ - Fees are supplied with an instruction
+ - Eligible instructions are defined in the template constructor.
+
+ - Instructions that are not covered by the model MAY be rejected by the VNC
+
+What does an instruction look like?
+
+Note: Solana instructions contain
+ - ProgramId
+ - Vec of accounts that the instruction will interact with (plus whether they're mutable and have signer auth)
+ - a blob that the program will deserialise.
+So, no inherently accessible API
+
+Requires:
+ - Contract ID
+ - Vec of method calls: (this is different to how Solana does it/ Maybe some discussion on pros&cons is worthwhile. 
+   If we go WASM, the API is available via reflection)
+   - Method ID (template::method)
+   - Method arguments
+ - Authorization
+   - signed token-based (Macaroons / JWTish)
+
+Now the VNs have everything they need to execute the Instruction. 
+They execute the instruction.
+The update the state tree.
+Return of the call is a "diff" of some sort, which gets appended to the "OP Log" document, 
+and the new state root hash.
+
+The VNCs MUST reach consensus on this result.
+
+Then you move onto the next instruction.
+
+* Where do instructions get submitted?
+  * The [peg-in transaction] contains the pubkeys of each member of the VNC; or a checkpoint transaction.
+  * ergo, a client app knows the pubkeys of the VNC at all times.
+  * A client can send an Instruction to ANY VNC member via comms
+* VNs MUST maintain a mempool of instructions
+* VNs SHOULD share instructions with its peer committee members
+
+* Ordering of instructions.
+  * (In Hotstuff) The leader selects the next instruction(s) to run. 
+  * The leader MAY batch instructions in a single consensus round.
+  * For account-based side-chains, Instructions SHOULD contain a nonce??? (Might not be workable)
+  * For account-based side-chains, Instructions COULD have a dependency field that forces ordering of selected 
+    instructions.
+    * Potentially, an accumulator is a way to do this. An instruction provides a list of instruction hashes, and the 
+      instruction can be included ONLY IF ALL hashes have been recorded. 
+  * Instructions MUST not be executed more than once, even if resubmitted. Suggests some sort of salt/entropy/nonce so
+    that the same execution steps could be run without being interpreted as the _same_ instruction. (e.g. 
+    micro-transactions).
+  
+  
+ - TODO - cross-side-chain interactions
+
 
 #### Refund transactions
 
