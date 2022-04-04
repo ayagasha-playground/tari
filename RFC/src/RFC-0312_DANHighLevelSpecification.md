@@ -605,7 +605,65 @@ Then you move onto the next instruction.
     micro-transactions).
   
   
- - TODO - cross-side-chain interactions
+#### Cross-side-chain interactions
+
+Possible routes for this:
+
+##### Atomic transactions 
+  - Provide a proof that a conditional instruction on one chain has been executed,
+  - Execute on this chain, which reveals some fact that the other chain can use to finalise the instruction on the
+    other chain.
+  - Rolls back if 2nd party does not follow through.
+
+Advantages:
+- Does work. 
+
+Disadvantages
+- Slow
+- Need to get data from other chain.
+- Might hold up entire chain for extended periods.
+
+##### Observer protocol
+Implement a set of APIs in a template for reading the event log from the VNC directly or query the "read-only" contract.
+
+Pros:
+- Fast
+- Permissionless in one-way applications
+- Can check that results are signed by the VNC quorum
+
+Cons:
+- Rely on contracts implementing the protocol
+- Instructions that require both chains' state to update is harder using this method.
+
+#### Micro-payment
+
+##### Bundle accounts template into smart contract
+* The bundled "wrapped" Tari is used in micropayments.
+* Users top up or withdraw Tari into the micropayment accounts using a bride or one of the methods described above.
+
+##### Async-await analogue
+* Contract A is a digital assets contract.
+* Contract B is a payments contract.
+* A and Bob have a monetary account on B, and Bob wants access to the assets on A.
+* Bob authorises A to debit his account on B for a certain amount / under certain conditions OR
+* Bob authorises the invoice produced by A for a discrete payment.
+* A submits a payment instruction to B to withdraw the amount, co-signed by Bob (or he did a pre-auth).
+* A "awaits" the result of the payment, and once successful, releases the asset OR
+* the instruction times out and Bob does not receive the asset and the instruction concludes.
+
+Pros:
+* Can work in general, not just micro-payments
+* Can be fast.
+* Doesn't block progress in the face of obstructive agents.
+
+Cons:
+* Complex (handling collusion, "proof-of-delivery")
+* time-outs can lock up funds for long periods.
+* Relies on chains publishing events.
+* Contract B is a trusted party from the PoV of Bob / A (e.g. Bob & B collude to lie about account updates in order to 
+  defraud A)
+
+
 
 
 #### Refund transactions
