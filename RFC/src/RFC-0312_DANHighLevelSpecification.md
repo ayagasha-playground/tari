@@ -421,26 +421,55 @@ checkpoint merkle root combined with a merkle proof that a VNC has given to a us
 
 * Validator node committees MUST periodically sign and broadcast a [checkpoint] transaction.
   * The transaction signature MUST satisfy the requirements laid out for checkpoint transactions defined in the 
-    [validator committee proposal].  
+    [validator committee proposal].  (alt names: Contract Governance Manifesto / Contract Management Manifesto)
   * The checkpoint UTXO MUST have the `CHECKPOINT` output feature.
-  * It MUST reference the [contract_id]
+  * It MUST reference the [contract_id].
   * This feature contains a commitment to the current contract state. This is typically some sort of Merklish root.
-  * A checkpoint number, strictly increasing by 1 from the previous checkpoint
+  * A checkpoint number, strictly increasing by 1 from the previous checkpoint.
   * The checkpoint MUST spend the previous checkpoint. This is guaranteed by virtue of a covenant. The contract id 
     must equal the contract id of the checkpoint being spent.
   * The checkpoint UTXO contains a covenant that provides the spending conditions described above.
   * Checkpoints allow the exit and entrance of new validator nodes into the committee.
   * A checkpoint MAY introduce a new Validator Node public key into the VN committee
   * The conditions for adding a new key to the VN committee set are specified in the [validator committee proposal].
-  * Note: At the minimum, there's a proposal step, a validation step, an acceptance step, and an activation step.
 * The validator node committee MUST post periodic [checkpoints] onto the base layer.
   * The checkpoint MUST include a [summary of the contract state]. This summary SHOULD be in the form of a Merklish Root.
 * If a valid checkpoint is not posted within the maximum allowed timeframe, the contract is [abandoned]. This COULD lead
   to penalties and stake slashing if enabled within the contract specification.
 
-TODO:
-* Specifics on VNC change process
-* Specifics on contract abandonment
+##### VNC management
+Removal or addition of VNC members MUST happen at checkpoints. (In general, the same applies to any changes to the 
+[validator committee proposal]).
+
+* The rules over how members are added or removed are defined in the [validator committee proposal]. It may be that
+  the VNC has autonomy over these changes, or that the asset issuer must approve changes, or some other authorization 
+  mechanism.
+* At the minimum, there's a proposal step, a validation step, an acceptance step, and an activation step. Therefore
+  changes take place over at least a 4-checkpoint time span.
+* If a VN leaves a committee their [side-chain deposit] MAY be refunded to them.
+* If a new VN joins the committee they must provide the [side-chain deposit] at their activation step.
+* In the proposal step, any authorised VNC change proposer, as defined in the [validator committee proposal]
+
+##### Contract abandonment
+If a contract misses one or more checkpoints, nodes can mark it as `abandoned`. This is not formally marked on the 
+blockchain, (since something was NOT done on-chain), but nodes will be able to test for abandoned state.
+
+The [validator committee proposal] COULD provide a set of emergency pubkeys that are able to 
+* perform a peg-out
+* do all governancy things
+* rescue funds and state
+
+Implementation note: We could add an `IS_ABANDONED` opcode (sugar for height since last checkpoint) to test for 
+abandonment.
+
+If a contract is abandoned, the emergency key MAY spend the last checkpoint into a `QUARANTINED` state. A contract MUST
+stay in `QUARANTINED` state for at least one month. 
+
+The contract can leave the quarantined state in one of two ways:
+* The current VNC MAY reinstate the contract operation by publishing the missing checkpoints, and committing to any 
+  remedial actions as specified in the [validator committee proposal], e.g. paying a fine, etc.
+* The quarantine period lapses, at which point the emergency key holder(s) have full administrative power over the 
+  contract. So they can unilaterally establish a brand new VNC, peg-out and shut down the contract, or whatever. 
 
 
 ### Other considerations and specifications
@@ -710,16 +739,7 @@ When spent:
 Note: Miners may be able to combine multiple of these transactions into aggregated refund txs by merging merkle proofs
 in the same block.
 
-#### Slashing authorised signers
 
-The list of authorised peg-out signers is provided by the [asset owner] during the [peg-in transaction], and may be
-updated in an [`UpdateSigner`] transaction.
-
-Signers accept this responsibility by committing at the contract collateral to an output which has the following spend
-conditions:
-
-* The signer is no longer part of the contract's authorised signatory list
-* The contract has been `ABANDONED`, in which case, the output is burned.
 
 
 #### Validator Node collateral
