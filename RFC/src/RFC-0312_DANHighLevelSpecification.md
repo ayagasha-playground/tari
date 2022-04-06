@@ -123,35 +123,6 @@ the output features of the UTXO.
 Whereas a standard RDMS manages access control and permissions via policy, we must also take care to ensure proper access control
 via consensus rules, lock scripts, covenants, signatures and kernels.
 
-```mermaid
-erDiagram
-          Contract ||--|| Side-chain : "managed in"
-          Contract ||--|| ContractSpecification : "defined in"
-          Instruction }o--|| Side-chain : "executed in"
-          Side-chain ||--|{ Checkpoint : "commits to"
-          Side-chain ||--|| Peg-in : "created in"
-          Side-chain ||--|| Peg-out : "destroyed in"
-
-          Contract {
-              pubkey owner
-              hash code
-              
-          }
-
-          Peg-in {
-            UTXO lockup
-            Array committee
-            hash contract
-          }
-
-          Instruction {
-            hash contractId
-            methodId method
-            Array arguments
-            signature authorisation
-          }
-```
-
 ### Top-level requirements for side-chains
 
 The guiding principle of Tari contracts are that they are managed on a dedicated side-chain. One side-chain,
@@ -251,7 +222,7 @@ This contract can be very simple or highly complex.
 The lifecycle of a contract proceeds via these steps:
 
 1. The asset issuer publishes a [contract definition transaction].
-2. The asset issuer publishes a [validator committee proposal] transaction.
+2. The asset issuer publishes a [contract constitution] transaction.
 3. Once this transaction is published, we enter the [acceptance period].
 4. Each validator node that will be managing the contract publishes a [contract acceptance transaction]. The group of
    validator nodes is called the Validator Node Committee (VNC).
@@ -335,15 +306,16 @@ having the range-proof commit to $(k, v - v_\mathrm{min})$ rather than the usual
   shuts the contract down via a [peg-out transaction].
 
 #### The validator committee proposal
-[validator committee proposal]: #the-validator-committee-proposal "The validator committee proposal"
+[contract constitution]: #the-validator-committee-proposal "The validator committee proposal"
 
-  * The asset issuer broadcasts a [validator committee proposal] transaction.
+  * The asset issuer broadcasts a [contract constitution] transaction.
     * This transaction defines the "how" and "who" of the digital asset's management.
     * It links to the contract definition UTXO.
     * This transaction contains the "contract terms" for the management of the contract.
     * This transaction contains the public keys of the proposed VN committee; 
     * a expiry date before which all the VNs must sign and agree to these terms (the [acceptance period]); 
     * quorum conditions for acceptance of this proposal (default to 100%);
+    * If the conditions will unequivocally pass, the waiting period MAY be shortcut.
     * this MUST be achieved by the asset issuer providing a UTXO that can only be spent by a multisig of the quorum of
       VNS performing a peg-in. There MAY be an [initial reward] that is paid to the VN committee when the UTXO is spent.
     * part of this agreement MAY be a [side-chain deposit] amount that needs to be committed as part of the [peg-in];
@@ -421,17 +393,17 @@ checkpoint merkle root combined with a merkle proof that a VNC has given to a us
 
 * Validator node committees MUST periodically sign and broadcast a [checkpoint] transaction.
   * The transaction signature MUST satisfy the requirements laid out for checkpoint transactions defined in the 
-    [validator committee proposal].  (alt names: Contract Governance Manifesto / Contract Management Manifesto)
+    [contract constitution].  (alt names: Contract Governance Manifesto / Contract Management Manifesto)
   * The checkpoint UTXO MUST have the `CHECKPOINT` output feature.
   * It MUST reference the [contract_id].
   * This feature contains a commitment to the current contract state. This is typically some sort of Merklish root.
+  * It MAY have a URI to off-chain state or merkle tree
   * A checkpoint number, strictly increasing by 1 from the previous checkpoint.
   * The checkpoint MUST spend the previous checkpoint. This is guaranteed by virtue of a covenant. The contract id 
     must equal the contract id of the checkpoint being spent.
   * The checkpoint UTXO contains a covenant that provides the spending conditions described above.
   * Checkpoints allow the exit and entrance of new validator nodes into the committee.
-  * A checkpoint MAY introduce a new Validator Node public key into the VN committee
-  * The conditions for adding a new key to the VN committee set are specified in the [validator committee proposal].
+  * Checkpoints MAY also contain [contract constitution] change pipelines.
 * The validator node committee MUST post periodic [checkpoints] onto the base layer.
   * The checkpoint MUST include a [summary of the contract state]. This summary SHOULD be in the form of a Merklish Root.
 * If a valid checkpoint is not posted within the maximum allowed timeframe, the contract is [abandoned]. This COULD lead
@@ -439,22 +411,22 @@ checkpoint merkle root combined with a merkle proof that a VNC has given to a us
 
 ##### VNC management
 Removal or addition of VNC members MUST happen at checkpoints. (In general, the same applies to any changes to the 
-[validator committee proposal]).
+[contract constitution]).
 
-* The rules over how members are added or removed are defined in the [validator committee proposal]. It may be that
+* The rules over how members are added or removed are defined in the [contract constitution]. It may be that
   the VNC has autonomy over these changes, or that the asset issuer must approve changes, or some other authorization 
   mechanism.
 * At the minimum, there's a proposal step, a validation step, an acceptance step, and an activation step. Therefore
   changes take place over at least a 4-checkpoint time span.
 * If a VN leaves a committee their [side-chain deposit] MAY be refunded to them.
 * If a new VN joins the committee they must provide the [side-chain deposit] at their activation step.
-* In the proposal step, any authorised VNC change proposer, as defined in the [validator committee proposal]
+* In the proposal step, any authorised VNC change proposer, as defined in the [contract constitution]
 
 ##### Contract abandonment
 If a contract misses one or more checkpoints, nodes can mark it as `abandoned`. This is not formally marked on the 
 blockchain, (since something was NOT done on-chain), but nodes will be able to test for abandoned state.
 
-The [validator committee proposal] COULD provide a set of emergency pubkeys that are able to 
+The [contract constitution] COULD provide a set of emergency pubkeys that are able to 
 * perform a peg-out
 * do all governancy things
 * rescue funds and state
@@ -467,7 +439,7 @@ stay in `QUARANTINED` state for at least one month.
 
 The contract can leave the quarantined state in one of two ways:
 * The current VNC MAY reinstate the contract operation by publishing the missing checkpoints, and committing to any 
-  remedial actions as specified in the [validator committee proposal], e.g. paying a fine, etc.
+  remedial actions as specified in the [contract constitution], e.g. paying a fine, etc.
 * The quarantine period lapses, at which point the emergency key holder(s) have full administrative power over the 
   contract. So they can unilaterally establish a brand new VNC, peg-out and shut down the contract, or whatever. 
 
@@ -694,50 +666,6 @@ Cons:
 
 
 
-
-#### Refund transactions
-
-If a contract is abandoned by validator nodes, then there is a dilemma: We can only refund people in accordance with the
-last known state of the ledger. Therefore, we MUST record refund information into every checkpoint, so that we can at least
-recover the majority of the side-chain's history in the event of a forced refund.
-
-Goal: To commit to the contract state at the time of the checkpoint.
-Including, to allow users to have a recent claim on side-chain funds in the event that the contract is abandoned.
-
-The state checkpoint consists of :
-
-- A timestamp
-- contract ID
-- Checkpoint number (strictly incremented by one from previous checkpoint number)
-- A hash or merkle root of the contract state
-- A merkle root of the refund data
-- data from [Asset registration transaction] ?
-
-Refund data:
-
-- A merkle tree of (account balance / commitment, refund address)
-
-Account holder (wallets) MUST keep a local copy of a merkle proof of their latest (C, address) pair.
-
-VNs MUST provide clients with this data when queried.
-
-Spending conditions:
-
-- No new checkpoint for a contract has been published in `CHECKPOINT_MAX_TIMEOUT` blocks.
-- The tx input is a `PegIn` type.
-- One or more (C, Address) is provided.
-- A merkle proof for the (C, Address) pairs that matches the last checkpoint merkle root is provided.
-- The (C, Address) pairs have not been spent before. [?? with pruning , could be tricky to check]
-- Change address MUST be an identical UTXO as the `PegIn` input, but with the correct adjusted balance
-- Other outputs MUST be exactly the (C, Address) pairs as one-sided payments.
-- fees??? Who pays the tx fees? An extra input + change to cover fees?
-
-When spent:
-
-- All VN collateral for the contract is burnt
-
-Note: Miners may be able to combine multiple of these transactions into aggregated refund txs by merging merkle proofs
-in the same block.
 
 
 
