@@ -23,7 +23,7 @@ env:
 jobs:
   clippy:
     name: clippy
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, Linux, cloud]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -66,7 +66,7 @@ jobs:
           args: clippy --all-targets
   build:
     name: check nightly
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, Linux, cloud]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -105,7 +105,7 @@ jobs:
 
   build-stable:
     name: check stable
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, Linux, cloud]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -146,7 +146,7 @@ jobs:
           args: --release --package tari_wallet_ffi
   javascript:
     name: npm packages
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, Linux, cloud]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -181,7 +181,7 @@ jobs:
         run: ./scripts/file_license_check.sh
   test:
     name: test
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, Linux, cloud]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -224,7 +224,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: test
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, Linux, cloud]
     steps:
       - name: Save the PR number in an artifact
         shell: bash
